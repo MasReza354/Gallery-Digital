@@ -4,11 +4,51 @@ require_once 'includes/header.php';
 
 $conn = getDBConnection();
 
+// --- PERBAIKAN: Placeholder untuk gambar hero dinamis ---
+// Anda bisa mengambil ini dari database (misal: tabel settings)
+// TODO: Ganti URL gambar ini atau ambil dari database di bagian admin
+$hero_image_url = 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1740&q=80';
+// --- Akhir Perbaikan ---
+
+// --- PERBAIKAN: Fungsi untuk ikon kategori ---
+function getKategoriIcon($nama_kategori)
+{
+  $icon_map = [
+    'Seni Rupa' => 'fas fa-paint-brush',
+    'Desain' => 'fas fa-drafting-compass', // Contoh ikon untuk Desain
+    'Musik' => 'fas fa-music', // Contoh ikon untuk Musik
+    'Sains' => 'fas fa-flask',
+    'Teknologi' => 'fas fa-laptop-code',
+    'Sastra' => 'fas fa-book-open',
+    'Video' => 'fas fa-video',
+    'Fotografi' => 'fas fa-camera-retro',
+    // Tambahkan default
+    'default' => 'fas fa-palette' // Ikon default jika tidak ada yang cocok
+  ];
+
+  // Coba cocokkan dengan nama yang mengandung kata kunci (case-insensitive)
+  foreach ($icon_map as $key => $icon) {
+    if ($key !== 'default' && stripos($nama_kategori, $key) !== false) {
+      return $icon;
+    }
+  }
+
+  // Jika tidak ada kata kunci yang cocok, coba cocokkan nama persis
+  if (array_key_exists($nama_kategori, $icon_map)) {
+    return $icon_map[$nama_kategori];
+  }
+
+  // Jika tidak ada yang cocok sama sekali, gunakan default
+  return $icon_map['default'];
+}
+// --- Akhir Perbaikan ---
+
+
 // Get featured artworks (unggulan = true)
 $sql_featured = "
   SELECT k.*, p.nama_lengkap as nama_siswa, p.foto_profil,
          kat.nama as kategori_nama,
-         COUNT(s.id) as jumlah_suka
+         COUNT(DISTINCT s.id) as jumlah_suka
   FROM Karya k
   LEFT JOIN Pengguna p ON k.siswa_id = p.id
   LEFT JOIN Kategori kat ON k.kategori_id = kat.id
@@ -24,7 +64,7 @@ $featured_artworks = $conn->query($sql_featured);
 $sql_recent = "
   SELECT k.*, p.nama_lengkap as nama_siswa, p.foto_profil,
          kat.nama as kategori_nama,
-         COUNT(s.id) as jumlah_suka
+         COUNT(DISTINCT s.id) as jumlah_suka
   FROM Karya k
   LEFT JOIN Pengguna p ON k.siswa_id = p.id
   LEFT JOIN Kategori kat ON k.kategori_id = kat.id
@@ -36,15 +76,26 @@ $sql_recent = "
 ";
 $recent_artworks = $conn->query($sql_recent);
 
-// Get categories for filter
-$categories = $conn->query("SELECT * FROM Kategori ORDER BY nama");
+// Get categories for filter and display
+// Pastikan tabel Kategori ada dan berisi data
+$categories_result = $conn->query("SELECT id, nama FROM Kategori ORDER BY nama");
+$categories = [];
+if ($categories_result) {
+  while ($row = $categories_result->fetch_assoc()) {
+    $categories[] = $row;
+  }
+}
+
 
 $conn->close();
 ?>
 
 <!-- Hero Section -->
-<section class="relative bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 py-20 lg:py-32 overflow-hidden">
-  <div class="absolute inset-0 bg-black opacity-20"></div>
+<!-- PERBAIKAN: Menggunakan background-image dinamis dan overlay -->
+<section class="relative bg-cover bg-center py-20 lg:py-32 overflow-hidden" style="background-image: url('<?php echo htmlspecialchars($hero_image_url); ?>');">
+  <div class="absolute inset-0 bg-black opacity-50"></div> <!-- Overlay gelap -->
+  <!-- Akhir Perbaikan -->
+
   <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
     <div class="fade-in">
       <h1 class="text-4xl lg:text-6xl font-bold text-white mb-6 leading-tight">
@@ -81,7 +132,8 @@ $conn->close();
           <div class="text-white/80 text-sm">Siswa Aktif</div>
         </div>
         <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-          <div class="text-3xl font-bold text-white mb-2">8</div>
+          <div class="text-3xl font-bold text-white mb-2"><?php echo count($categories); // Hitung jumlah kategori 
+                                                          ?></div>
           <div class="text-white/80 text-sm">Kategori Seni</div>
         </div>
       </div>
@@ -106,7 +158,7 @@ $conn->close();
       </p>
     </div>
 
-    <?php if ($featured_artworks->num_rows > 0): ?>
+    <?php if ($featured_artworks && $featured_artworks->num_rows > 0): ?>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
         <?php while ($karya = $featured_artworks->fetch_assoc()): ?>
           <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow fade-in">
@@ -151,10 +203,25 @@ $conn->close();
                   <?php echo htmlspecialchars($karya['kategori_nama'] ?? 'Tanpa Kategori'); ?>
                 </span>
 
-                <div class="flex items-center text-gray-500 dark:text-gray-400">
-                  <i class="fas fa-heart mr-1"></i>
-                  <span class="text-sm"><?php echo $karya['jumlah_suka']; ?></span>
-                </div>
+                <!-- PERBAIKAN: Tombol Like -->
+                <form method="POST" action="/suka.php" class="like-form">
+                  <input type="hidden" name="karya_id" value="<?php echo $karya['id']; ?>">
+                  <button type="submit" class="text-gray-500 dark:text-gray-400 hover:text-red-500 transition-colors <?php
+                                                                                                                      $user_ip = getUserIP();
+                                                                                                                      $conn_temp = getDBConnection();
+                                                                                                                      $check_like = $conn_temp->prepare("SELECT id FROM Suka WHERE karya_id = ? AND user_ip = ?");
+                                                                                                                      $check_like->bind_param("is", $karya['id'], $user_ip);
+                                                                                                                      $check_like->execute();
+                                                                                                                      $is_liked = $check_like->get_result()->num_rows > 0;
+                                                                                                                      $check_like->close();
+                                                                                                                      $conn_temp->close();
+                                                                                                                      echo $is_liked ? 'text-red-500' : '';
+                                                                                                                      ?>">
+                    <i class="fas fa-heart mr-1"></i>
+                    <span class="like-count text-sm"><?php echo $karya['jumlah_suka']; ?></span>
+                  </button>
+                </form>
+                <!-- Akhir Perbaikan -->
               </div>
 
               <a href="/karya.php?id=<?php echo $karya['id']; ?>" class="mt-4 w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors text-center block">
@@ -195,10 +262,10 @@ $conn->close();
       </p>
     </div>
 
-    <?php if ($recent_artworks->num_rows > 0): ?>
+    <?php if ($recent_artworks && $recent_artworks->num_rows > 0): ?>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <?php while ($karya = $recent_artworks->fetch_assoc()): ?>
-          <div class="bg-gray-50 dark:bg-gray-700 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow fade-in">
+          <a href="/karya.php?id=<?php echo $karya['id']; ?>" class="block bg-gray-50 dark:bg-gray-700 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow fade-in group">
             <div class="relative">
               <?php
               $file_type = getFileType($karya['media_url']);
@@ -217,20 +284,36 @@ $conn->close();
             </div>
 
             <div class="p-4">
-              <h4 class="font-semibold text-gray-900 dark:text-white text-sm mb-1"><?php echo htmlspecialchars($karya['judul']); ?></h4>
+              <h4 class="font-semibold text-gray-900 dark:text-white text-sm mb-1 group-hover:text-blue-600"><?php echo htmlspecialchars($karya['judul']); ?></h4>
               <p class="text-gray-600 dark:text-gray-400 text-xs mb-2"><?php echo htmlspecialchars($karya['nama_siswa']); ?></p>
 
               <div class="flex items-center justify-between text-xs">
                 <span class="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-2 py-1 rounded">
                   <?php echo htmlspecialchars($karya['kategori_nama'] ?? 'Tanpa Kategori'); ?>
                 </span>
-                <div class="flex items-center text-gray-500 dark:text-gray-400">
-                  <i class="fas fa-heart mr-1"></i>
-                  <span><?php echo $karya['jumlah_suka']; ?></span>
-                </div>
+
+                <!-- PERBAIKAN: Tombol Like -->
+                <form method="POST" action="/suka.php" class="like-form" onclick="event.stopPropagation();">
+                  <input type="hidden" name="karya_id" value="<?php echo $karya['id']; ?>">
+                  <button type="submit" class="text-gray-500 dark:text-gray-400 hover:text-red-500 transition-colors <?php
+                                                                                                                      $user_ip = getUserIP();
+                                                                                                                      $conn_temp = getDBConnection();
+                                                                                                                      $check_like = $conn_temp->prepare("SELECT id FROM Suka WHERE karya_id = ? AND user_ip = ?");
+                                                                                                                      $check_like->bind_param("is", $karya['id'], $user_ip);
+                                                                                                                      $check_like->execute();
+                                                                                                                      $is_liked = $check_like->get_result()->num_rows > 0;
+                                                                                                                      $check_like->close();
+                                                                                                                      $conn_temp->close();
+                                                                                                                      echo $is_liked ? 'text-red-500' : '';
+                                                                                                                      ?>">
+                    <i class="fas fa-heart mr-1"></i>
+                    <span class="like-count"><?php echo $karya['jumlah_suka']; ?></span>
+                  </button>
+                </form>
+                <!-- Akhir Perbaikan -->
               </div>
             </div>
-          </div>
+          </a>
         <?php endwhile; ?>
       </div>
     <?php else: ?>
@@ -260,14 +343,16 @@ $conn->close();
 
     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
       <?php $colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500']; ?>
-      <?php $i = 0;
-      while ($kategori = $categories->fetch_assoc()): ?>
-        <a href="/galeri.php?kategori=<?php echo $kategori['id']; ?>" class="bg-white dark:bg-gray-800 <?php echo $colors[$i % count($colors)]; ?> p-6 rounded-lg shadow-md hover:shadow-lg transition-all hover:scale-105 text-center">
-          <i class="fas fa-palette text-2xl text-white mb-2"></i>
+      <?php $i = 0; ?>
+      <?php foreach ($categories as $kategori): ?>
+        <a href="/galeri.php?kategori=<?php echo $kategori['id']; ?>" class="<?php echo $colors[$i % count($colors)]; ?> p-6 rounded-lg shadow-md hover:shadow-lg transition-all hover:scale-105 text-center flex flex-col items-center justify-center aspect-square">
+          <!-- PERBAIKAN: Ikon Dinamis -->
+          <i class="<?php echo getKategoriIcon($kategori['nama']); ?> text-2xl text-white mb-2"></i>
+          <!-- Akhir Perbaikan -->
           <h3 class="font-semibold text-white text-sm"><?php echo htmlspecialchars($kategori['nama']); ?></h3>
         </a>
         <?php $i++; ?>
-      <?php endwhile; ?>
+      <?php endforeach; ?>
     </div>
   </div>
 </section>
@@ -298,5 +383,61 @@ $conn->close();
     </div>
   </div>
 </section>
+
+<!-- PERBAIKAN: Script untuk Like (Event delegation) -->
+<script>
+  document.body.addEventListener('submit', function(event) {
+    if (event.target.matches('.like-form')) {
+      event.preventDefault();
+      handleLike(event.target);
+    }
+  });
+
+  function handleLike(form) {
+    const button = form.querySelector('button');
+    const countSpan = button.querySelector('.like-count');
+    const icon = button.querySelector('i');
+    const formData = new FormData(form);
+
+    button.disabled = true; // Nonaktifkan tombol sementara
+
+    fetch('/suka.php', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.success) {
+          if (data.action === 'liked') {
+            button.classList.add('text-red-500'); // Tambah kelas merah
+            icon.classList.add('text-red-500'); // Ikon jadi merah
+          } else {
+            button.classList.remove('text-red-500'); // Hapus kelas merah
+            icon.classList.remove('text-red-500'); // Ikon kembali abu-abu
+          }
+          if (countSpan) {
+            countSpan.textContent = data.newCount; // Update jumlah like
+          }
+        } else {
+          // Tampilkan pesan error jika ada
+          console.error('Like request failed:', data.message);
+          alert('Gagal menyukai karya: ' + (data.message || 'Terjadi kesalahan'));
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('Terjadi kesalahan koneksi saat menyukai karya.');
+      })
+      .finally(() => {
+        button.disabled = false; // Aktifkan kembali tombol
+      });
+  }
+</script>
+<!-- Akhir Perbaikan -->
 
 <?php require_once 'includes/footer.php'; ?>

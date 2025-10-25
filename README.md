@@ -158,7 +158,11 @@ chown -R www-data:www-data uploads/
 
 Proyek ini dibuat untuk tujuan edukasi dan dapat digunakan bebas dengan atribusi yang sesuai.
 
+## 👥 **Kontributor**
+
+- **Prompting Expert** - Ahli Promting
+- **Development** - AI Assistant
+
 ---
 
 > 🎨 **"Kreativitas dimulai dari ide, tapi terwujud melalui aksi."**
-
